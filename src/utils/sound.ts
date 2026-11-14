@@ -119,6 +119,8 @@ class SoundEngine {
 
 export const soundEngine = new SoundEngine();
 
+let latestSpeechReqId = 0;
+
 export function speakSpellPronunciation(
   text: string,
   lang: 'zh-CN' | 'en-US',
@@ -130,29 +132,42 @@ export function speakSpellPronunciation(
     return false;
   }
 
+  const reqId = ++latestSpeechReqId;
+
   try {
-    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+    }
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
     utterance.rate = lang === 'en-US' ? 0.88 : 0.94;
     utterance.pitch = 1.02;
 
     const voices = window.speechSynthesis.getVoices();
-    const matchedVoice = voices.find((v) =>
-      v.lang.toLowerCase().startsWith(lang.split('-')[0].toLowerCase())
-    );
+    const langPrefix = lang.split('-')[0].toLowerCase();
+    const exactVoice = voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase());
+    const matchedVoice =
+      exactVoice || voices.find((v) => v.lang.toLowerCase().startsWith(langPrefix));
     if (matchedVoice) {
       utterance.voice = matchedVoice;
     }
 
-    utterance.onend = () => onEnd?.();
-    utterance.onerror = () => onEnd?.();
+    const finish = () => {
+      if (reqId === latestSpeechReqId) {
+        onEnd?.();
+      }
+    };
+
+    utterance.onend = finish;
+    utterance.onerror = finish;
 
     window.speechSynthesis.speak(utterance);
     return true;
   } catch {
     soundEngine.playSpellCast('utility');
-    onEnd?.();
+    if (reqId === latestSpeechReqId) {
+      onEnd?.();
+    }
     return false;
   }
 }

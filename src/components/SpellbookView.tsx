@@ -124,6 +124,12 @@ export default function SpellbookView({
     setTimeout(() => setPracticeFlash(null), 2000);
   };
 
+  const handleSelectSpell = (spell: SpellDef) => {
+    setSelectedId(spell.id);
+    setSpeakingLang('en');
+    speakSpellPronunciation(spell.incantation, 'en-US', () => setSpeakingLang(null));
+  };
+
   const canAffordUnlock =
     progress.galleons >= selectedSpell.unlockCostGalleons &&
     progress.scrollFragments >= selectedSpell.unlockCostScrolls;
@@ -138,7 +144,7 @@ export default function SpellbookView({
               霍格沃茨全系咒语库
             </h2>
             <p className="mt-1 text-sm text-[#94A3B8]">
-              已掌握 {progress.learnedSpells.length} / {SPELLS.length} 个魔咒 · 跑酷中拾取【咒语学习单】或消耗加隆研习解锁
+              已掌握 {progress.learnedSpells.length} / {SPELLS.length} 个魔咒 · 点击任意咒语直接听英文发音
             </p>
           </div>
           <div className="relative w-full sm:w-56">
@@ -181,7 +187,7 @@ export default function SpellbookView({
             return (
               <button
                 key={spell.id}
-                onClick={() => setSelectedId(spell.id)}
+                onClick={() => handleSelectSpell(spell)}
                 className={`group flex flex-col justify-between rounded-lg border p-4 text-left transition-all ${
                   active
                     ? 'border-[#E5B84B] bg-[#1C2338]'

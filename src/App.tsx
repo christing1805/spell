@@ -30,7 +30,7 @@ import {
   SpellDef,
   SpellId,
 } from './types/game';
-import { soundEngine } from './utils/sound';
+import { soundEngine, speakSpellPronunciation } from './utils/sound';
 import {
   createInitialProgress,
   evaluateAchievements,
@@ -598,6 +598,7 @@ export default function App() {
                         <button
                           key={sp.id}
                           onClick={() => {
+                            speakSpellPronunciation(sp.incantation, 'en-US');
                             setFocusedSpellId(sp.id);
                             setActiveTab('spellbook');
                           }}
