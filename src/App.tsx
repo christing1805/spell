@@ -237,66 +237,68 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0B0E17] text-[#F1EDE4]">
-      {/* Strict 3-Zone Top Bar Contract */}
-      <header className="border-b border-white/10 bg-[#0B0E17]/95 backdrop-blur-xs">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-8 px-6 py-4">
-          {/* Zone 1: Single text element wordmark */}
-          <button
-            onClick={() => {
-              setActiveLevel(null);
-              setActiveTab('home');
-            }}
-            className="whitespace-nowrap shrink-0 font-display text-lg font-bold tracking-wide text-[#E5B84B] hover:text-[#FDE68A]"
-          >
-            Hogwarts Dash
-          </button>
-
-          {/* Zone 2: 4 concise single-line nav links */}
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            {(
-              [
-                { id: 'home', label: '冒险主页' },
-                { id: 'spellbook', label: '咒语库' },
-                { id: 'wardrobe', label: '巫师衣柜' },
-                { id: 'achievements', label: '成就殿堂' },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveLevel(null);
-                  setActiveTab(item.id);
-                }}
-                className={`whitespace-nowrap shrink-0 transition-colors ${
-                  activeTab === item.id && !activeLevel
-                    ? 'text-[#E5B84B] underline decoration-[#E5B84B] decoration-2 underline-offset-8'
-                    : 'text-[#CBD5E1] hover:text-white'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-
-          {/* Zone 3: 1 primary action */}
-          <div className="shrink-0">
+      {/* Strict 3-Zone Top Bar Contract (Hidden during active parkour to maximize game viewport) */}
+      {!activeLevel && (
+        <header className="border-b border-white/10 bg-[#0B0E17]/95 backdrop-blur-xs">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:gap-8 sm:px-6 sm:py-4">
+            {/* Zone 1: Single text element wordmark */}
             <button
               onClick={() => {
-                const targetLvl =
-                  LEVELS.find((l) => l.id === progress.unlockedLevelMax) || LEVELS[0];
-                setActiveLevel(targetLvl);
+                setActiveLevel(null);
+                setActiveTab('home');
               }}
-              className="whitespace-nowrap shrink-0 rounded-lg bg-[#E5B84B] px-4 py-2 text-xs font-semibold text-[#0B0E17] transition-colors hover:bg-[#F3C963]"
+              className="whitespace-nowrap shrink-0 font-display text-lg font-bold tracking-wide text-[#E5B84B] hover:text-[#FDE68A]"
             >
-              开始跑酷
+              Hogwarts Dash
             </button>
+
+            {/* Zone 2: 4 concise single-line nav links */}
+            <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+              {(
+                [
+                  { id: 'home', label: '冒险主页' },
+                  { id: 'spellbook', label: '咒语库' },
+                  { id: 'wardrobe', label: '巫师衣柜' },
+                  { id: 'achievements', label: '成就殿堂' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveLevel(null);
+                    setActiveTab(item.id);
+                  }}
+                  className={`whitespace-nowrap shrink-0 transition-colors ${
+                    activeTab === item.id && !activeLevel
+                      ? 'text-[#E5B84B] underline decoration-[#E5B84B] decoration-2 underline-offset-8'
+                      : 'text-[#CBD5E1] hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+
+            {/* Zone 3: 1 primary action */}
+            <div className="shrink-0">
+              <button
+                onClick={() => {
+                  const targetLvl =
+                    LEVELS.find((l) => l.id === progress.unlockedLevelMax) || LEVELS[0];
+                  setActiveLevel(targetLvl);
+                }}
+                className="whitespace-nowrap shrink-0 rounded-lg bg-[#E5B84B] px-4 py-2 text-xs sm:text-sm font-semibold text-[#0B0E17] transition-colors hover:bg-[#F3C963]"
+              >
+                开始跑酷
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Mobile Nav Strip */}
       {!activeLevel && (
-        <div className="flex items-center justify-around border-b border-white/10 bg-[#101522] px-3 py-2 md:hidden">
+        <div className="flex items-center justify-around border-b border-white/10 bg-[#101522] px-2 py-2 md:hidden">
           {(
             [
               { id: 'home', label: '主页' },
@@ -308,10 +310,10 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium ${
+              className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium ${
                 activeTab === item.id
                   ? 'bg-[#E5B84B] text-[#0B0E17] font-semibold'
-                  : 'text-[#94A3B8]'
+                  : 'text-[#CBD5E1]'
               }`}
             >
               {item.label}
@@ -321,7 +323,7 @@ export default function App() {
       )}
 
       {/* Main Content */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-3 py-4 sm:px-6 sm:py-8">
         {activeLevel ? (
           <GameCanvas
             level={activeLevel}
@@ -607,17 +609,17 @@ export default function App() {
                         >
                           <div className="flex w-full items-center justify-between">
                             <span
-                              className="h-2 w-2 rounded-xs"
+                              className="h-2.5 w-2.5 rounded-xs"
                               style={{ backgroundColor: sp.color }}
                             />
-                            <span className="font-mono-num text-[11px] text-[#94A3B8]">
+                            <span className="font-mono-num text-xs text-[#94A3B8]">
                               {learned ? `Lv.${progress.spellMastery[sp.id] || 1}` : '待学'}
                             </span>
                           </div>
-                          <div className="mt-2 truncate w-full text-xs font-semibold text-[#F1EDE4]">
+                          <div className="mt-2 truncate w-full text-sm font-semibold text-[#F1EDE4]">
                             {sp.nameZh}
                           </div>
-                          <div className="truncate w-full font-display text-[10px] text-[#94A3B8]">
+                          <div className="truncate w-full font-display text-xs text-[#94A3B8]">
                             {sp.incantation}
                           </div>
                         </button>

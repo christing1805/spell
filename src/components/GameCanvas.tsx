@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Heart,
+  Maximize2,
   Mic,
   MicOff,
+  Minimize2,
   Pause,
   Play,
   RotateCcw,
@@ -131,10 +133,11 @@ interface FloatingText {
   life: number;
 }
 
-const LOGICAL_W = 1080;
-const LOGICAL_H = 520;
-const GROUND_Y = 432;
-const PLAYER_X = 148;
+function getViewportMetrics(compact: boolean) {
+  return compact
+    ? { w: 560, h: 390, groundY: 320, playerX: 54, bossStopOffset: 122 }
+    : { w: 1080, h: 480, groundY: 396, playerX: 148, bossStopOffset: 196 };
+}
 
 const OBSTACLE_LABELS: Record<ObstacleType, { name: string; hint: string; color: string }> = {
   devils_snare: { name: '魔鬼网', hint: '火焰熊熊 / 跳', color: '#34D399' },
@@ -157,6 +160,22 @@ export default function GameCanvas({
 }: GameCanvasProps) {
   const costume = COSTUME_MAP[progress.equippedCostume];
   const maxHp = 4 + costume.modifiers.maxHpBonus;
+
+  const [isCompact, setIsCompact] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 768
+  );
+  const [isExpanded, setIsExpanded] = useState(false);
+  const vp = getViewportMetrics(isCompact);
+  const vpRef = useRef(vp);
+  vpRef.current = vp;
+
+  useEffect(() => {
+    const onResize = () => {
+      setIsCompact(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const voiceRef = useRef<VoiceSpellController | null>(null);
@@ -220,7 +239,7 @@ export default function GameCanvas({
     newlyLearnedSpells: [] as SpellId[],
 
     // Player physics
-    py: GROUND_Y - 60,
+    py: vp.groundY - 70,
     vy: 0,
     jumpsLeft: 2,
     isSliding: false,
@@ -247,8 +266,8 @@ export default function GameCanvas({
     // Boss state
     bossPhase: false,
     bossHp: level.boss.maxHp,
-    bossX: LOGICAL_W + 120,
-    bossY: GROUND_Y - 104,
+    bossX: vp.w + 120,
+    bossY: vp.groundY - 114,
     bossAttackTimer: 2.0,
     bossCastFlash: 0,
     bossHurtFlash: 0,
@@ -296,6 +315,7 @@ export default function GameCanvas({
   const castSpell = useCallback(
     (spellId: SpellId, viaVoice: boolean) => {
       const s = simRef.current;
+      const curVp = vpRef.current;
       if (s.ended || isPaused) return;
       if (!s.learnedSpells.includes(spellId)) return;
 
@@ -303,14 +323,14 @@ export default function GameCanvas({
       const now = performance.now();
       const cdUntil = s.spellCooldownUntil[spellId] || 0;
       if (now < cdUntil) {
-        addFloatText(PLAYER_X + 20, s.py - 12, '冷却中', '#94A3B8');
+        addFloatText(curVp.playerX + 20, s.py - 12, '冷却中', '#94A3B8');
         return;
       }
 
       const mastery = Math.max(1, progress.spellMastery[spellId] || 1);
       const effectiveCost = Math.max(6, spell.manaCost - (mastery - 1));
       if (s.mana < effectiveCost) {
-        addFloatText(PLAYER_X + 20, s.py - 12, '魔力不足', '#38BDF8');
+        addFloatText(curVp.playerX + 20, s.py - 12, '魔力不足', '#38BDF8');
         return;
       }
 
@@ -324,7 +344,7 @@ export default function GameCanvas({
       if (viaVoice) s.voiceCasts += 1;
 
       soundEngine.playSpellCast(spell.category);
-      spawnBurst(PLAYER_X + 64, s.py + 24, spell.color, 10);
+      spawnBurst(curVp.playerX + 64, s.py + 28, spell.color, 10);
 
       setLastCastBanner({
         name: spell.nameZh,
@@ -346,7 +366,7 @@ export default function GameCanvas({
         if (s.prioriState === 'charging') {
           s.prioriState = 'clash';
           s.prioriMeter = 58;
-          addFloatText(LOGICAL_W / 2, 180, '闪回咒对波开启！连击除你武器！', '#FDE047');
+          addFloatText(curVp.w / 2 - 90, 150, '闪回咒对波开启！连击除你武器！', '#FDE047');
         } else {
           s.prioriMeter = Math.min(100, s.prioriMeter + 24);
         }
@@ -362,7 +382,7 @@ export default function GameCanvas({
         }
         soundEngine.playShieldBlock();
         addFloatText(
-          PLAYER_X + 20,
+          curVp.playerX + 20,
           s.py - 16,
           spellId === 'salvio' ? '平安镇守！强效护盾' : '盔甲护身！',
           spell.color
@@ -376,10 +396,10 @@ export default function GameCanvas({
           s.hp = Math.min(s.maxHp, s.hp + healAmt);
           if (spellId === 'vulnera') s.invulnTimer = Math.max(s.invulnTimer, 1.2);
           soundEngine.playHeal();
-          addFloatText(PLAYER_X + 20, s.py - 16, `+${healAmt} 生命恢复`, spell.color);
+          addFloatText(curVp.playerX + 20, s.py - 16, `+${healAmt} 生命恢复`, spell.color);
         } else {
           s.mana = Math.min(100, s.mana + 15);
-          addFloatText(PLAYER_X + 20, s.py - 16, '生命已满 · 魔力回充', spell.color);
+          addFloatText(curVp.playerX + 20, s.py - 16, '生命已满 · 魔力回充', spell.color);
         }
         return;
       }
@@ -387,7 +407,7 @@ export default function GameCanvas({
       if (spellId === 'arresto' || spellId === 'impedimenta') {
         s.slowTimer = spellId === 'arresto' ? 4.2 : 3.4;
         addFloatText(
-          PLAYER_X + 30,
+          curVp.playerX + 30,
           s.py - 18,
           spellId === 'arresto' ? '减震止速！全场缓速' : '障碍重重！敌军迟滞',
           spell.color
@@ -399,13 +419,13 @@ export default function GameCanvas({
         let pulled = 0;
         for (const pk of s.pickups) {
           if (!pk.collected) {
-            pk.x = PLAYER_X + 12;
+            pk.x = curVp.playerX + 12;
             pk.y = s.py + 20;
             pulled += 1;
           }
         }
         addFloatText(
-          PLAYER_X + 20,
+          curVp.playerX + 20,
           s.py - 18,
           pulled > 0 ? `飞来咒！吸取 ${pulled} 个战利品` : '飞来咒！视野内暂无道具',
           spell.color
@@ -418,16 +438,15 @@ export default function GameCanvas({
         s.jumpsLeft = 2;
         s.isSliding = false;
         soundEngine.playJump();
-        spawnBurst(PLAYER_X + 24, s.py + 52, spell.color, 12);
-        addFloatText(PLAYER_X + 20, s.py - 18, '腾空而起！', spell.color);
+        spawnBurst(curVp.playerX + 24, s.py + 52, spell.color, 12);
+        addFloatText(curVp.playerX + 20, s.py - 18, '腾空而起！', spell.color);
         return;
       }
 
       if (spellId === 'depulso' || spellId === 'obliviate') {
-        // Clear enemy projectiles ahead & push/disarm Death Eaters
         s.projectiles = s.projectiles.filter((p) => p.fromPlayer);
         for (const de of s.deathEaters) {
-          if (!de.defeated && de.x > PLAYER_X && de.x < PLAYER_X + 520) {
+          if (!de.defeated && de.x > curVp.playerX && de.x < curVp.playerX + 520) {
             if (spellId === 'depulso') {
               de.x += 170;
             } else {
@@ -437,17 +456,16 @@ export default function GameCanvas({
           }
         }
         if (spellId === 'depulso') {
-          addFloatText(PLAYER_X + 30, s.py - 18, '飞来飞去！驱逐弹幕', spell.color);
+          addFloatText(curVp.playerX + 30, s.py - 18, '飞来飞去！驱逐弹幕', spell.color);
         } else {
-          addFloatText(PLAYER_X + 30, s.py - 18, '一忘皆空！食死徒失神', spell.color);
+          addFloatText(curVp.playerX + 30, s.py - 18, '一忘皆空！食死徒失神', spell.color);
         }
       }
 
       if (spellId === 'wingardium') {
-        // Levitate nearest stone pillar ahead
         let liftedAny = false;
         for (const obs of s.obstacles) {
-          if (!obs.cleared && obs.type === 'stone_pillar' && obs.x > PLAYER_X - 20 && obs.x < PLAYER_X + 520) {
+          if (!obs.cleared && obs.type === 'stone_pillar' && obs.x > curVp.playerX - 20 && obs.x < curVp.playerX + 520) {
             obs.lifting = true;
             obs.cleared = true;
             s.obstaclesCleared += 1;
@@ -461,12 +479,11 @@ export default function GameCanvas({
       }
 
       if (spellId === 'lumos' || spellId === 'patronum') {
-        // Area light wave clears dark_mist ahead & damages enemies
         for (const obs of s.obstacles) {
           if (
             !obs.cleared &&
-            obs.x > PLAYER_X &&
-            obs.x < PLAYER_X + 500 &&
+            obs.x > curVp.playerX &&
+            obs.x < curVp.playerX + 500 &&
             (obs.type === 'dark_mist' || (spellId === 'lumos' && obs.type === 'devils_snare'))
           ) {
             obs.cleared = true;
@@ -478,7 +495,6 @@ export default function GameCanvas({
         }
       }
 
-      // Launch spell projectile
       const dmg =
         spell.damage > 0
           ? Math.round((spell.damage + (mastery - 1) * 5) * (s.bossPhase ? costume.modifiers.bossDmgMult : 1))
@@ -488,12 +504,12 @@ export default function GameCanvas({
         id: s.nextId++,
         fromPlayer: true,
         spellId,
-        x: PLAYER_X + 64,
-        y: s.py + 26,
+        x: curVp.playerX + 64,
+        y: s.py + 30,
         vx: spellId === 'stupefy' || spellId === 'sectumsempra' ? 880 : 720,
         vy: 0,
         color: spell.color,
-        radius: spellId === 'bombarda' || spellId === 'patronum' ? 14 : 9,
+        radius: spellId === 'bombarda' || spellId === 'patronum' ? 14 : 10,
         damage: dmg,
       });
     },
@@ -545,20 +561,22 @@ export default function GameCanvas({
   // Player jump & slide triggers
   const triggerJump = useCallback(() => {
     const s = simRef.current;
+    const curVp = vpRef.current;
     if (s.ended || isPaused) return;
     if (s.jumpsLeft > 0) {
-      s.vy = -610 * costume.modifiers.jumpBoost;
+      s.vy = -615 * costume.modifiers.jumpBoost;
       s.jumpsLeft -= 1;
       s.isSliding = false;
       soundEngine.playJump();
-      spawnBurst(PLAYER_X + 24, s.py + 56, '#CBD5E1', 5);
+      spawnBurst(curVp.playerX + 24, s.py + 58, '#CBD5E1', 5);
     }
   }, [costume.modifiers.jumpBoost, isPaused]);
 
   const setSlide = useCallback((active: boolean) => {
     const s = simRef.current;
+    const curVp = vpRef.current;
     s.slideHold = active;
-    if (active && s.py >= GROUND_Y - 64) {
+    if (active && s.py >= curVp.groundY - 74) {
       if (!s.isSliding) soundEngine.playSlide();
       s.isSliding = true;
     } else if (!active) {
@@ -599,6 +617,7 @@ export default function GameCanvas({
   // Reset function for Play Again
   const resetRun = () => {
     const s = simRef.current;
+    const curVp = vpRef.current;
     s.frame = 0;
     s.scrollX = 0;
     s.distance = 0;
@@ -616,7 +635,7 @@ export default function GameCanvas({
     s.bossDamageTaken = 0;
     s.learnedSpells = [...progress.learnedSpells];
     s.newlyLearnedSpells = [];
-    s.py = GROUND_Y - 60;
+    s.py = curVp.groundY - 70;
     s.vy = 0;
     s.jumpsLeft = 2;
     s.isSliding = false;
@@ -636,7 +655,8 @@ export default function GameCanvas({
     s.scrollSpawnedCount = 0;
     s.bossPhase = false;
     s.bossHp = level.boss.maxHp;
-    s.bossX = LOGICAL_W + 120;
+    s.bossX = curVp.w + 120;
+    s.bossY = curVp.groundY - 114;
     s.bossAttackTimer = 2.0;
     s.prioriState = 'idle';
     s.prioriTimer = 0;
@@ -698,20 +718,21 @@ export default function GameCanvas({
 
     const damagePlayer = () => {
       const s = simRef.current;
+      const curVp = vpRef.current;
       if (s.invulnTimer > 0) return;
 
       if (s.shieldTimer > 0) {
         s.shieldTimer = 0;
         s.invulnTimer = 0.6;
         soundEngine.playShieldBlock();
-        spawnBurst(PLAYER_X + 26, s.py + 30, '#38BDF8', 14);
-        addFloatText(PLAYER_X + 20, s.py - 14, '护盾抵挡！', '#38BDF8');
+        spawnBurst(curVp.playerX + 26, s.py + 30, '#38BDF8', 14);
+        addFloatText(curVp.playerX + 20, s.py - 14, '护盾抵挡！', '#38BDF8');
         return;
       }
 
       if (costume.modifiers.dodgeChance > 0 && Math.random() < costume.modifiers.dodgeChance) {
         s.invulnTimer = 0.7;
-        addFloatText(PLAYER_X + 20, s.py - 14, '隐形相位闪避！', '#E2E8F0');
+        addFloatText(curVp.playerX + 20, s.py - 14, '隐形相位闪避！', '#E2E8F0');
         return;
       }
 
@@ -719,8 +740,8 @@ export default function GameCanvas({
       s.invulnTimer = 1.25;
       if (s.bossPhase) s.bossDamageTaken += 1;
       soundEngine.playHit();
-      spawnBurst(PLAYER_X + 24, s.py + 30, '#EF4444', 14);
-      addFloatText(PLAYER_X + 20, s.py - 14, '-1 生命', '#EF4444');
+      spawnBurst(curVp.playerX + 24, s.py + 30, '#EF4444', 14);
+      addFloatText(curVp.playerX + 20, s.py - 14, '-1 生命', '#EF4444');
 
       if (s.hp <= 0) {
         finishRun(false);
@@ -729,6 +750,11 @@ export default function GameCanvas({
 
     const update = (dt: number) => {
       const s = simRef.current;
+      const curVp = vpRef.current;
+      const LOGICAL_W = curVp.w;
+      const LOGICAL_H = curVp.h;
+      const GROUND_Y = curVp.groundY;
+      const PLAYER_X = curVp.playerX;
       if (s.ended || isPaused) return;
 
       s.frame += dt * 60;
@@ -751,8 +777,8 @@ export default function GameCanvas({
       if (s.bossHurtFlash > 0) s.bossHurtFlash -= dt;
 
       // Player physics
-      const playerH = s.isSliding ? 34 : 60;
-      const playerW = 42;
+      const playerH = s.isSliding ? 38 : 70;
+      const playerW = 48;
       const prevBottom = s.py + playerH;
       s.vy += 1550 * dt;
       s.py += s.vy * dt;
@@ -788,8 +814,10 @@ export default function GameCanvas({
       if (!s.bossPhase && s.distance >= level.distanceGoal) {
         s.bossPhase = true;
         s.obstacles = [];
+        s.bossX = LOGICAL_W + 90;
+        s.bossY = GROUND_Y - 114;
         soundEngine.playBossWarning();
-        addFloatText(LOGICAL_W / 2 - 80, 160, `警告：${level.boss.nameZh} 现身！`, '#F43F5E');
+        addFloatText(Math.max(40, LOGICAL_W / 2 - 120), 120, `警告：${level.boss.nameZh} 现身！`, '#F43F5E');
       }
 
       // Spawning obstacles, platforms, Death Eaters & Spell Study Scrolls (pre-boss)
@@ -805,8 +833,8 @@ export default function GameCanvas({
             type === 'dark_mist' ||
             type === 'crystal_wall' ||
             type === 'stone_pillar';
-          const obsW = type === 'low_spike' ? 54 : 52;
-          const obsH = type === 'low_spike' ? 28 : type === 'boggart_chest' ? 44 : isTall ? 92 : 58;
+          const obsW = type === 'low_spike' ? 56 : 54;
+          const obsH = type === 'low_spike' ? 30 : type === 'boggart_chest' ? 48 : isTall ? 94 : 60;
 
           s.obstacles.push({
             id: s.nextId++,
@@ -822,8 +850,8 @@ export default function GameCanvas({
 
           // Elevated platform with Galleons OR Spell Study Scroll!
           if (Math.random() < 0.55) {
-            const platX = LOGICAL_W + 180;
-            const platY = GROUND_Y - 125 - Math.random() * 35;
+            const platX = LOGICAL_W + 170;
+            const platY = GROUND_Y - 122 - Math.random() * 30;
             const platW = 150;
             s.platforms.push({ x: platX, y: platY, w: platW });
 
@@ -833,8 +861,8 @@ export default function GameCanvas({
               s.pickups.push({
                 id: s.nextId++,
                 kind: 'scroll',
-                x: platX + platW / 2 - 15,
-                y: platY - 42,
+                x: platX + platW / 2 - 18,
+                y: platY - 46,
                 collected: false,
               });
             } else {
@@ -843,7 +871,7 @@ export default function GameCanvas({
                   id: s.nextId++,
                   kind: 'galleon',
                   x: platX + 24 + c * 38,
-                  y: platY - 32,
+                  y: platY - 34,
                   collected: false,
                 });
               }
@@ -852,7 +880,7 @@ export default function GameCanvas({
             s.pickups.push({
               id: s.nextId++,
               kind: 'heal',
-              x: LOGICAL_W + 220,
+              x: LOGICAL_W + 200,
               y: GROUND_Y - 90,
               collected: false,
             });
@@ -866,7 +894,7 @@ export default function GameCanvas({
           const roll = Math.random();
           const variant: DeathEaterEntity['variant'] =
             level.id >= 2 && roll > 0.65 ? 'flier' : level.id >= 2 && roll > 0.38 ? 'shielded' : 'scout';
-          const ey = variant === 'flier' ? GROUND_Y - 140 : GROUND_Y - 58;
+          const ey = variant === 'flier' ? GROUND_Y - 140 : GROUND_Y - 64;
           s.deathEaters.push({
             id: s.nextId++,
             variant,
@@ -881,10 +909,11 @@ export default function GameCanvas({
         }
       } else {
         // Boss Phase logic
-        if (s.bossX > LOGICAL_W - 190) {
+        const bossTargetX = LOGICAL_W - curVp.bossStopOffset;
+        s.bossY = GROUND_Y - 114;
+        if (s.bossX > bossTargetX) {
           s.bossX -= 180 * dt;
         } else {
-          // Boss attack & Priori Incantatem
           if (s.prioriState === 'idle') {
             s.bossAttackTimer -= dt * worldMult;
             if (s.bossAttackTimer <= 0) {
@@ -893,13 +922,12 @@ export default function GameCanvas({
                 s.prioriState = 'charging';
                 s.prioriTimer = 2.7;
                 s.bossAttackTimer = 3.8;
-                addFloatText(s.bossX - 180, s.bossY - 24, '索命咒蓄力！快喊【除你武器】！', '#22C55E');
+                addFloatText(Math.max(40, s.bossX - 210), s.bossY - 24, '索命咒蓄力！快喊【除你武器】！', '#22C55E');
               } else {
                 s.bossCastFlash = 0.35;
                 s.bossAttackTimer = Math.max(1.25, 2.2 - level.id * 0.18);
                 const pattern = Math.random();
                 if (pattern < 0.55) {
-                  // Aimed dark bolt (jump or Protego reflect!)
                   const targetY = Math.random() < 0.5 ? GROUND_Y - 34 : GROUND_Y - 96;
                   s.projectiles.push({
                     id: s.nextId++,
@@ -913,7 +941,6 @@ export default function GameCanvas({
                     damage: 1,
                   });
                 } else {
-                  // Boss summons a fast obstacle OR double spread
                   s.projectiles.push({
                     id: s.nextId++,
                     fromPlayer: false,
@@ -942,15 +969,13 @@ export default function GameCanvas({
           } else if (s.prioriState === 'charging') {
             s.prioriTimer -= dt;
             if (s.prioriTimer <= 0) {
-              // Player failed to trigger Expelliarmus in time
               s.prioriState = 'idle';
               damagePlayer();
               addFloatText(PLAYER_X + 40, s.py - 20, '未能及时对波！', '#22C55E');
             }
           } else if (s.prioriState === 'clash') {
-            s.prioriMeter -= 13 * dt; // Voldemort pushes back slowly
+            s.prioriMeter -= 13 * dt;
             if (s.prioriMeter >= 100) {
-              // Player wins Priori Incantatem!
               s.prioriState = 'idle';
               s.prioriClashesWon += 1;
               s.bossHp -= 85;
@@ -958,7 +983,7 @@ export default function GameCanvas({
               s.score += 400;
               soundEngine.playEnemyDefeat();
               spawnBurst(s.bossX + 20, s.bossY + 40, '#FDE047', 24);
-              addFloatText(s.bossX - 40, s.bossY - 20, '闪回咒破防 -85!', '#FDE047');
+              addFloatText(s.bossX - 60, s.bossY - 20, '闪回咒破防 -85!', '#FDE047');
               if (s.bossHp <= 0) {
                 finishRun(true);
                 return;
@@ -996,7 +1021,7 @@ export default function GameCanvas({
         de.x -= runSpeed * (de.frozenTimer > 0 ? 1 : 0.72) * dt * worldMult;
         if (de.frozenTimer > 0) {
           de.frozenTimer -= dt;
-        } else if (!de.defeated && de.x < LOGICAL_W - 40 && de.x > PLAYER_X + 120) {
+        } else if (!de.defeated && de.x < LOGICAL_W - 20 && de.x > PLAYER_X + 120) {
           de.shootTimer -= dt * worldMult;
           if (de.shootTimer <= 0) {
             de.shootTimer = 2.1;
@@ -1018,9 +1043,9 @@ export default function GameCanvas({
           !de.defeated &&
           de.frozenTimer <= 0 &&
           PLAYER_X + playerW - 8 > de.x &&
-          PLAYER_X + 8 < de.x + 42 &&
+          PLAYER_X + 8 < de.x + 48 &&
           s.py + playerH > de.y &&
-          s.py < de.y + 58
+          s.py < de.y + 64
         ) {
           damagePlayer();
           de.defeated = true;
@@ -1034,9 +1059,9 @@ export default function GameCanvas({
         if (
           !pk.collected &&
           PLAYER_X + playerW > pk.x &&
-          PLAYER_X < pk.x + 34 &&
+          PLAYER_X < pk.x + 38 &&
           s.py + playerH > pk.y &&
-          s.py < pk.y + 34
+          s.py < pk.y + 38
         ) {
           pk.collected = true;
           if (pk.kind === 'galleon') {
@@ -1056,24 +1081,22 @@ export default function GameCanvas({
             soundEngine.playScrollPickup();
             spawnBurst(pk.x + 15, pk.y + 15, '#FDE047', 18);
 
-            // Unlock a new unlearned spell immediately if any remain!
             const unlearned = SPELLS.filter((sp) => !s.learnedSpells.includes(sp.id));
             if (unlearned.length > 0) {
-              // Prefer spells recommended for current/next levels
               const preferred =
                 unlearned.find((sp) => level.recommendedSpells.includes(sp.id)) ||
                 unlearned[Math.floor(Math.random() * unlearned.length)];
               s.learnedSpells.push(preferred.id);
               s.newlyLearnedSpells.push(preferred.id);
               addFloatText(
-                pk.x - 40,
+                Math.max(20, pk.x - 90),
                 pk.y - 16,
-                `领悟新咒语学习单：【${preferred.nameZh}】!`,
+                `领悟新咒语：【${preferred.nameZh}】!`,
                 '#FDE047'
               );
             } else {
               s.galleons += 25;
-              addFloatText(pk.x - 20, pk.y - 16, '咒语学习单碎片 +1 (+25加隆)', '#38BDF8');
+              addFloatText(Math.max(20, pk.x - 60), pk.y - 16, '学习单碎片 +1 (+25加隆)', '#38BDF8');
             }
           }
         }
@@ -1116,7 +1139,7 @@ export default function GameCanvas({
                 }
                 spawnBurst(obs.x + obs.w / 2, obs.y + obs.h / 2, spell.color, 16);
                 soundEngine.playEnemyDefeat();
-                proj.x = LOGICAL_W + 200; // Consume projectile
+                proj.x = LOGICAL_W + 200;
                 break;
               } else {
                 addFloatText(obs.x, obs.y - 14, `需【${OBSTACLE_LABELS[obs.type].hint}】`, '#94A3B8');
@@ -1131,9 +1154,9 @@ export default function GameCanvas({
             if (de.defeated) continue;
             if (
               proj.x + proj.radius > de.x &&
-              proj.x - proj.radius < de.x + 44 &&
+              proj.x - proj.radius < de.x + 50 &&
               proj.y + proj.radius > de.y &&
-              proj.y - proj.radius < de.y + 60
+              proj.y - proj.radius < de.y + 66
             ) {
               if (proj.spellId === 'petrificus' || proj.spellId === 'glacius') {
                 de.frozenTimer = proj.spellId === 'glacius' ? 5.0 : 4.5;
@@ -1167,9 +1190,9 @@ export default function GameCanvas({
           if (
             s.bossPhase &&
             proj.x + proj.radius > s.bossX &&
-            proj.x - proj.radius < s.bossX + 76 &&
+            proj.x - proj.radius < s.bossX + 86 &&
             proj.y + proj.radius > s.bossY &&
-            proj.y - proj.radius < s.bossY + 104
+            proj.y - proj.radius < s.bossY + 114
           ) {
             const isWeakness = level.boss.weaknessSpells.includes(proj.spellId);
             const finalDmg = isWeakness ? Math.round(proj.damage * 1.5) : proj.damage;
@@ -1179,7 +1202,7 @@ export default function GameCanvas({
             spawnBurst(s.bossX + 30, s.bossY + 45, spell.color, 14);
             soundEngine.playEnemyDefeat();
             addFloatText(
-              s.bossX - 10,
+              s.bossX - 24,
               s.bossY - 14,
               isWeakness ? `弱点克制 -${finalDmg}!` : `-${finalDmg}`,
               isWeakness ? '#FDE047' : spell.color
@@ -1192,7 +1215,6 @@ export default function GameCanvas({
             }
           }
         } else if (!proj.fromPlayer) {
-          // Enemy projectile vs Player
           if (
             proj.x + proj.radius > PLAYER_X + 4 &&
             proj.x - proj.radius < PLAYER_X + playerW - 4 &&
@@ -1200,7 +1222,6 @@ export default function GameCanvas({
             proj.y - proj.radius < s.py + playerH - 4
           ) {
             if (s.shieldTimer > 0) {
-              // Reflect projectile back toward enemies/Boss!
               s.shieldTimer = Math.max(0.2, s.shieldTimer - 0.8);
               soundEngine.playShieldBlock();
               proj.fromPlayer = true;
@@ -1239,6 +1260,11 @@ export default function GameCanvas({
 
     const draw = () => {
       const s = simRef.current;
+      const curVp = vpRef.current;
+      const LOGICAL_W = curVp.w;
+      const LOGICAL_H = curVp.h;
+      const GROUND_Y = curVp.groundY;
+      const PLAYER_X = curVp.playerX;
       ctx.imageSmoothingEnabled = false;
 
       // Sky gradient
@@ -1251,8 +1277,8 @@ export default function GameCanvas({
       // Parallax pixel art backdrop image
       if (bgImageRef.current) {
         ctx.save();
-        ctx.globalAlpha = 0.42;
-        const bgW = LOGICAL_W;
+        ctx.globalAlpha = 0.45;
+        const bgW = Math.max(LOGICAL_W, 920);
         const offset = (s.scrollX * 0.15) % bgW;
         ctx.drawImage(bgImageRef.current, -offset, 0, bgW, GROUND_Y);
         ctx.drawImage(bgImageRef.current, bgW - offset, 0, bgW, GROUND_Y);
@@ -1263,12 +1289,11 @@ export default function GameCanvas({
       ctx.fillStyle = 'rgba(11, 14, 23, 0.55)';
       const midOffset = (s.scrollX * 0.35) % 240;
       for (let px = -midOffset; px < LOGICAL_W + 240; px += 240) {
-        ctx.fillRect(Math.round(px), 90, 26, GROUND_Y - 90);
-        // Floating candle / lantern pixel
+        ctx.fillRect(Math.round(px), 70, 26, GROUND_Y - 70);
         ctx.fillStyle = '#FDE047';
-        ctx.fillRect(Math.round(px + 80), 115 + Math.sin(s.frame * 0.08 + px) * 6, 4, 8);
+        ctx.fillRect(Math.round(px + 80), 95 + Math.sin(s.frame * 0.08 + px) * 6, 4, 8);
         ctx.fillStyle = 'rgba(253, 224, 71, 0.25)';
-        ctx.fillRect(Math.round(px + 76), 110 + Math.sin(s.frame * 0.08 + px) * 6, 12, 12);
+        ctx.fillRect(Math.round(px + 76), 90 + Math.sin(s.frame * 0.08 + px) * 6, 12, 12);
         ctx.fillStyle = 'rgba(11, 14, 23, 0.55)';
       }
 
@@ -1287,48 +1312,56 @@ export default function GameCanvas({
       // Platforms
       for (const plat of s.platforms) {
         ctx.fillStyle = '#334155';
-        ctx.fillRect(Math.round(plat.x), Math.round(plat.y), plat.w, 14);
+        ctx.fillRect(Math.round(plat.x), Math.round(plat.y), plat.w, 16);
         ctx.fillStyle = '#E5B84B';
-        ctx.fillRect(Math.round(plat.x), Math.round(plat.y), plat.w, 3);
+        ctx.fillRect(Math.round(plat.x), Math.round(plat.y), plat.w, 4);
       }
 
-      // Pickups
+      // Pickups (Larger & crisp!)
       for (const pk of s.pickups) {
         if (pk.kind === 'galleon') {
-          drawGalleonPickup(ctx, pk.x, pk.y, 4, s.frame);
+          drawGalleonPickup(ctx, pk.x, pk.y, 4.5, s.frame);
         } else if (pk.kind === 'heal') {
-          drawHealPickup(ctx, pk.x, pk.y, 4, s.frame);
+          drawHealPickup(ctx, pk.x, pk.y, 4.5, s.frame);
         } else {
-          drawScrollPickup(ctx, pk.x, pk.y, 3.5, s.frame);
-          ctx.font = 'bold 11px "Plus Jakarta Sans", sans-serif';
+          drawScrollPickup(ctx, pk.x, pk.y, 4.2, s.frame);
+          ctx.font = 'bold 16px "Plus Jakarta Sans", sans-serif';
+          const textW = ctx.measureText('咒语学习单').width + 12;
+          const labelX = Math.max(6, Math.min(LOGICAL_W - textW - 6, Math.round(pk.x + 20 - textW / 2)));
+          ctx.fillStyle = 'rgba(11, 14, 23, 0.88)';
+          ctx.fillRect(labelX, pk.y - 30, textW, 22);
           ctx.fillStyle = '#FDE047';
-          ctx.fillText('咒语学习单', pk.x - 12, pk.y - 8);
+          ctx.fillText('咒语学习单', labelX + 6, pk.y - 13);
         }
       }
 
-      // Obstacles + overhead hint
+      // Obstacles + crisp high-contrast overhead hint
       for (const obs of s.obstacles) {
         drawObstacleSprite(ctx, obs.x, obs.y, obs.w, obs.h, obs.type, s.frame, obs.liftedOffset);
         if (!obs.cleared) {
           const info = OBSTACLE_LABELS[obs.type];
-          ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
-          ctx.fillStyle = 'rgba(11, 14, 23, 0.85)';
-          const labelW = ctx.measureText(info.hint).width + 12;
-          ctx.fillRect(obs.x + obs.w / 2 - labelW / 2, obs.y - 26, labelW, 18);
+          ctx.font = 'bold 17px "Plus Jakarta Sans", sans-serif';
+          const labelW = ctx.measureText(info.hint).width + 16;
+          const bx = Math.max(6, Math.min(LOGICAL_W - labelW - 6, Math.round(obs.x + obs.w / 2 - labelW / 2)));
+          const by = Math.max(8, Math.round(obs.y - 34));
+          ctx.fillStyle = 'rgba(11, 14, 23, 0.92)';
+          ctx.fillRect(bx, by, labelW, 25);
+          ctx.strokeStyle = info.color;
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(bx, by, labelW, 25);
           ctx.fillStyle = info.color;
-          ctx.fillText(info.hint, obs.x + obs.w / 2 - labelW / 2 + 6, obs.y - 13);
+          ctx.fillText(info.hint, bx + 8, by + 18);
         }
       }
 
       // Death Eaters
       for (const de of s.deathEaters) {
-        drawDeathEaterSprite(ctx, de.x, de.y, 3.2, de.variant, s.frame, de.frozenTimer > 0);
-        // Mini HP bar
+        drawDeathEaterSprite(ctx, de.x, de.y, 3.6, de.variant, s.frame, de.frozenTimer > 0);
         if (de.hp < de.maxHp) {
           ctx.fillStyle = '#0F172A';
-          ctx.fillRect(de.x, de.y - 10, 40, 5);
+          ctx.fillRect(de.x, de.y - 12, 46, 6);
           ctx.fillStyle = '#EF4444';
-          ctx.fillRect(de.x, de.y - 10, Math.round((de.hp / de.maxHp) * 40), 5);
+          ctx.fillRect(de.x, de.y - 12, Math.round((de.hp / de.maxHp) * 46), 6);
         }
       }
 
@@ -1338,36 +1371,32 @@ export default function GameCanvas({
           ctx,
           s.bossX,
           s.bossY,
-          4,
+          4.4,
           level.boss.id,
           s.frame,
           s.bossCastFlash > 0,
           s.bossHurtFlash > 0
         );
 
-        // Voldemort Priori Incantatem beam clash visual!
         if (s.prioriState === 'charging') {
-          ctx.strokeStyle = 'rgba(34, 197, 94, 0.7)';
+          ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)';
           ctx.lineWidth = 4;
           ctx.beginPath();
-          ctx.arc(s.bossX - 18, s.bossY + 42, 16 + Math.sin(s.frame * 0.5) * 5, 0, Math.PI * 2);
+          ctx.arc(s.bossX - 18, s.bossY + 46, 18 + Math.sin(s.frame * 0.5) * 5, 0, Math.PI * 2);
           ctx.stroke();
         } else if (s.prioriState === 'clash') {
           const startX = PLAYER_X + 64;
           const endX = s.bossX - 14;
           const meetX = startX + ((endX - startX) * s.prioriMeter) / 100;
-          const beamY = s.py + 26;
-          // Player golden/red Expelliarmus beam
+          const beamY = s.py + 30;
           ctx.fillStyle = '#EF4444';
           ctx.fillRect(startX, beamY - 6, meetX - startX, 12);
           ctx.fillStyle = '#FDE047';
           ctx.fillRect(startX, beamY - 2, meetX - startX, 4);
-          // Voldemort emerald beam
           ctx.fillStyle = '#16A34A';
           ctx.fillRect(meetX, beamY - 6, endX - meetX, 12);
           ctx.fillStyle = '#86EFAC';
           ctx.fillRect(meetX, beamY - 2, endX - meetX, 4);
-          // Golden clash orb
           ctx.fillStyle = '#FEF08A';
           ctx.beginPath();
           ctx.arc(meetX, beamY, 16 + Math.sin(s.frame * 0.8) * 4, 0, Math.PI * 2);
@@ -1375,10 +1404,10 @@ export default function GameCanvas({
         }
       }
 
-      // Player Wizard
-      drawWizardSprite(ctx, PLAYER_X, s.py, 3, costume.palette, {
+      // Player Wizard (3.5x crisp scale!)
+      drawWizardSprite(ctx, PLAYER_X, s.py, 3.5, costume.palette, {
         frame: s.frame,
-        isJumping: s.py < GROUND_Y - 64,
+        isJumping: s.py < GROUND_Y - 74,
         isSliding: s.isSliding,
         isCasting: s.castAnimTimer > 0,
         castColor: s.castColor,
@@ -1406,12 +1435,17 @@ export default function GameCanvas({
       }
       ctx.globalAlpha = 1;
 
-      // Floating texts
-      ctx.font = 'bold 14px "Plus Jakarta Sans", sans-serif';
+      // Floating texts (Larger 20px crisp text!)
+      ctx.font = 'bold 20px "Plus Jakarta Sans", sans-serif';
       for (const ft of s.floatingTexts) {
         ctx.globalAlpha = Math.min(1, ft.life * 1.4);
+        const tw = ctx.measureText(ft.text).width;
+        const drawX = Math.max(8, Math.min(LOGICAL_W - tw - 8, Math.round(ft.x)));
+        const drawY = Math.max(24, Math.round(ft.y));
+        ctx.fillStyle = '#0B0E17';
+        ctx.fillText(ft.text, drawX + 1.5, drawY + 1.5);
         ctx.fillStyle = ft.color;
-        ctx.fillText(ft.text, Math.round(ft.x), Math.round(ft.y));
+        ctx.fillText(ft.text, drawX, drawY);
       }
       ctx.globalAlpha = 1;
 
@@ -1471,40 +1505,48 @@ export default function GameCanvas({
   const bossHpPct = Math.max(0, Math.round((hud.bossHp / hud.bossMaxHp) * 100));
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      {/* Top Game Control Strip */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#141928] px-4 py-3">
-        <div className="flex items-center gap-3">
+    <div
+      className={
+        isExpanded
+          ? 'fixed inset-0 z-50 overflow-y-auto bg-[#0B0E17] p-3 sm:p-5 space-y-3'
+          : 'mx-auto max-w-6xl space-y-3'
+      }
+    >
+      {/* Compact Top Game Control Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-[#141928] px-3 py-2.5 sm:px-4">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             onClick={onExit}
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-white/10 bg-[#1B2236] px-3 py-1.5 text-xs font-medium text-[#CBD5E1] hover:border-white/25 hover:text-white"
+            className="flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-lg border border-white/15 bg-[#1B2236] px-3 py-2 text-xs sm:text-sm font-medium text-[#CBD5E1] hover:border-white/30 hover:text-white"
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span>返回主页</span>
+            <ArrowLeft className="h-4 w-4" />
+            <span>返回</span>
           </button>
-          <div>
-            <div className="text-sm font-bold text-[#F1EDE4]">{level.nameZh}</div>
-            <div className="text-xs text-[#94A3B8]">
+          <div className="min-w-0">
+            <div className="truncate text-sm sm:text-base font-bold text-[#F1EDE4]">
+              {level.nameZh}
+            </div>
+            <div className="hidden sm:block truncate text-xs text-[#94A3B8]">
               Boss：{level.boss.nameZh} · 弱点：{level.boss.weaknessSpells.map((id) => SPELL_MAP[id].nameZh).join(' / ')}
             </div>
           </div>
         </div>
 
-        {/* Voice Control + Sound + Pause */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Voice Control + Language + Expand + Sound + Pause */}
+        <div className="flex flex-wrap items-center gap-2">
           {isSpeechRecognitionSupported() && (
             <button
               onClick={toggleMic}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs sm:text-sm font-semibold transition-colors ${
                 micActive
                   ? 'bg-[#10B981] text-[#052E16]'
                   : 'border border-[#E5B84B]/50 bg-[#1D2438] text-[#FDE68A] hover:bg-[#26304A]'
               }`}
             >
-              {micActive ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
-              <span>{micActive ? '语音施法已开启' : '开启语音施法'}</span>
+              {micActive ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+              <span>{micActive ? '语音中' : '开启语音'}</span>
               {micActive && (
-                <span className="ml-1 inline-flex h-2.5 w-8 items-center overflow-hidden rounded-sm bg-[#052E16]/30">
+                <span className="ml-0.5 inline-flex h-2.5 w-6 items-center overflow-hidden rounded-sm bg-[#052E16]/30">
                   <span
                     className="h-full bg-[#052E16] transition-all duration-75"
                     style={{ width: `${Math.round(micVolume * 100)}%` }}
@@ -1518,131 +1560,136 @@ export default function GameCanvas({
             onClick={() =>
               onChangeVoiceLang(progress.voiceLanguage === 'zh-CN' ? 'en-US' : 'zh-CN')
             }
-            className="whitespace-nowrap rounded-lg border border-white/10 bg-[#1B2236] px-2.5 py-1.5 text-xs font-medium text-[#CBD5E1] hover:border-white/25"
+            className="whitespace-nowrap rounded-lg border border-white/10 bg-[#1B2236] px-2.5 py-2 text-xs sm:text-sm font-medium text-[#CBD5E1] hover:border-white/25"
           >
-            语音：{progress.voiceLanguage === 'zh-CN' ? '中文咒语' : 'English'}
+            {progress.voiceLanguage === 'zh-CN' ? '中文' : 'EN'}
+          </button>
+
+          <button
+            onClick={() => setIsExpanded((e) => !e)}
+            aria-label={isExpanded ? '退出全屏' : '放大画布'}
+            className="rounded-lg border border-white/10 bg-[#1B2236] p-2 text-[#CBD5E1] hover:border-white/25"
+          >
+            {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
 
           <button
             onClick={onToggleSound}
             aria-label="切换音效"
-            className="rounded-lg border border-white/10 bg-[#1B2236] p-1.5 text-[#CBD5E1] hover:border-white/25"
+            className="rounded-lg border border-white/10 bg-[#1B2236] p-2 text-[#CBD5E1] hover:border-white/25"
           >
             {progress.soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
 
           <button
             onClick={() => setIsPaused((p) => !p)}
-            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-white/10 bg-[#1B2236] px-3 py-1.5 text-xs font-medium text-[#F1EDE4] hover:border-white/25"
+            className="flex items-center gap-1 whitespace-nowrap rounded-lg border border-white/10 bg-[#1B2236] px-3 py-2 text-xs sm:text-sm font-medium text-[#F1EDE4] hover:border-white/25"
           >
-            {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
             <span>{isPaused ? '继续' : '暂停'}</span>
           </button>
         </div>
       </div>
 
-      {/* Live HUD Bar Above Canvas (Unobtrusive, zero overlap on active sprites) */}
-      <div className="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-[#141928] px-4 py-3 md:grid-cols-12 md:items-center">
-        {/* HP & Mana */}
-        <div className="flex flex-wrap items-center gap-5 md:col-span-5">
-          <div className="flex items-center gap-2">
-            <Heart className="h-4 w-4 text-[#EF4444]" />
-            <span className="font-mono-num text-sm font-bold text-[#F1EDE4]">
-              HP {hud.hp}/{hud.maxHp}
-            </span>
-            <div className="flex gap-1">
-              {Array.from({ length: hud.maxHp }).map((_, i) => (
-                <span
-                  key={i}
-                  className={`h-2.5 w-4 rounded-xs ${
-                    i < hud.hp ? 'bg-[#EF4444]' : 'bg-[#252D44]'
-                  }`}
+      {/* Compact High-Contrast HUD Strip Above Canvas */}
+      <div className="space-y-2 rounded-xl border border-white/10 bg-[#141928] px-3.5 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex items-center gap-3 sm:gap-5">
+            <div className="flex items-center gap-1.5">
+              <Heart className="h-4 w-4 text-[#EF4444]" />
+              <span className="font-mono-num text-sm font-bold text-[#F1EDE4]">
+                {hud.hp}/{hud.maxHp}
+              </span>
+              <div className="hidden xs:flex gap-1">
+                {Array.from({ length: hud.maxHp }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={`h-2.5 w-3.5 rounded-xs ${
+                      i < hud.hp ? 'bg-[#EF4444]' : 'bg-[#252D44]'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Zap className="h-4 w-4 text-[#38BDF8]" />
+              <span className="font-mono-num text-sm font-semibold text-[#38BDF8]">
+                {hud.mana}%
+              </span>
+              <div className="h-2 w-16 sm:w-24 overflow-hidden rounded-full bg-[#0B0E17]">
+                <div
+                  className="h-full bg-[#38BDF8] transition-all duration-100"
+                  style={{ width: `${hud.mana}%` }}
                 />
-              ))}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-[#38BDF8]" />
-            <span className="font-mono-num text-xs font-semibold text-[#38BDF8]">
-              魔力 {hud.mana}%
+          <div className="flex items-center gap-3 font-mono-num text-xs sm:text-sm">
+            {hud.shieldActive && (
+              <span className="flex items-center gap-1 text-[#38BDF8]">
+                <Shield className="h-4 w-4" /> 护盾
+              </span>
+            )}
+            <span className="text-[#E5B84B] font-semibold">+{hud.galleons}G</span>
+            <span className="flex items-center gap-1 text-[#FDE047] font-semibold">
+              <ScrollText className="h-4 w-4" />
+              {hud.scrolls}
             </span>
-            <div className="h-2 w-24 overflow-hidden rounded-full bg-[#0B0E17]">
+            <span className="text-[#F1EDE4] font-semibold">{hud.score} 分</span>
+          </div>
+        </div>
+
+        {/* Distance OR Boss HP Progress Bar */}
+        {!hud.bossPhase ? (
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs font-medium text-[#94A3B8]">关卡进度</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#0B0E17]">
               <div
-                className="h-full bg-[#38BDF8] transition-all duration-100"
-                style={{ width: `${hud.mana}%` }}
+                className="h-full bg-[#E5B84B] transition-all duration-150"
+                style={{ width: `${distPct}%` }}
               />
             </div>
-          </div>
-        </div>
-
-        {/* Distance OR Boss HP */}
-        <div className="md:col-span-4">
-          {!hud.bossPhase ? (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-[#94A3B8] font-mono-num">
-                <span>关卡进度</span>
-                <span>
-                  {hud.distance}m / {level.distanceGoal}m ({distPct}%)
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-[#0B0E17]">
-                <div
-                  className="h-full bg-[#E5B84B] transition-all duration-150"
-                  style={{ width: `${distPct}%` }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs font-bold text-[#F43F5E] font-mono-num">
-                <span>BOSS · {level.boss.nameZh}</span>
-                <span>
-                  {hud.bossHp} / {hud.bossMaxHp}
-                </span>
-              </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#0B0E17]">
-                <div
-                  className="h-full bg-[#F43F5E] transition-all duration-150"
-                  style={{ width: `${bossHpPct}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Score, Galleons & Scrolls */}
-        <div className="flex items-center justify-end gap-4 font-mono-num text-xs md:col-span-3">
-          {hud.shieldActive && (
-            <span className="flex items-center gap-1 text-[#38BDF8]">
-              <Shield className="h-3.5 w-3.5" /> 护盾
+            <span className="shrink-0 font-mono-num text-xs sm:text-sm font-semibold text-[#CBD5E1]">
+              {hud.distance}m / {level.distanceGoal}m
             </span>
-          )}
-          <span className="text-[#E5B84B] font-semibold">加隆 +{hud.galleons}</span>
-          <span className="flex items-center gap-1 text-[#FDE047]">
-            <ScrollText className="h-3.5 w-3.5" />
-            {hud.scrolls}
-          </span>
-          <span className="text-[#F1EDE4] font-semibold">{hud.score} 分</span>
-        </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs sm:text-sm font-bold text-[#F43F5E]">
+              BOSS · {level.boss.nameZh}
+            </span>
+            <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#0B0E17]">
+              <div
+                className="h-full bg-[#F43F5E] transition-all duration-150"
+                style={{ width: `${bossHpPct}%` }}
+              />
+            </div>
+            <span className="shrink-0 font-mono-num text-xs sm:text-sm font-bold text-[#F43F5E]">
+              {hud.bossHp}/{hud.bossMaxHp}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Main Pixel Canvas Container */}
       <div className="relative overflow-hidden rounded-xl border border-white/15 bg-[#0B0E17] shadow-2xl">
         <canvas
           ref={canvasRef}
-          width={LOGICAL_W}
-          height={LOGICAL_H}
-          className="pixelated block h-auto w-full"
+          width={vp.w}
+          height={vp.h}
+          onClick={triggerJump}
+          className="pixelated block h-auto w-full cursor-pointer"
         />
 
-        {/* Spell Cast Flash Banner (top-center subtle) */}
+        {/* Spell Cast Flash Banner */}
         {lastCastBanner && (
-          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-lg border border-white/15 bg-[#0B0E17]/85 px-4 py-1.5 text-center backdrop-blur-xs">
-            <span className="text-xs text-[#94A3B8]">
-              {lastCastBanner.viaVoice ? '语音施法 · ' : '魔杖施法 · '}
+          <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/15 bg-[#0B0E17]/90 px-3.5 py-1.5 text-center backdrop-blur-xs">
+            <span className="text-xs sm:text-sm text-[#94A3B8]">
+              {lastCastBanner.viaVoice ? '语音 · ' : ''}
             </span>
-            <span className="text-sm font-bold" style={{ color: lastCastBanner.color }}>
+            <span className="text-sm sm:text-base font-bold" style={{ color: lastCastBanner.color }}>
               {lastCastBanner.name}
             </span>
             <span className="ml-2 font-display text-xs text-[#CBD5E1]">
@@ -1653,12 +1700,12 @@ export default function GameCanvas({
 
         {/* Live Voice Transcript Feed */}
         {(micActive || lastTranscript || micError) && (
-          <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border border-white/10 bg-[#0B0E17]/85 px-3 py-1.5 text-xs">
+          <div className="pointer-events-none absolute bottom-2 left-2 right-2 sm:right-auto rounded-md border border-white/10 bg-[#0B0E17]/88 px-3 py-1.5 text-xs sm:text-sm">
             {micError ? (
               <span className="text-red-300">{micError}</span>
             ) : (
               <span className="text-[#CBD5E1]">
-                语音识别：{lastTranscript || '请清晰念出咒语（如：除你武器、盔甲护身、火焰熊熊）...'}
+                识别：{lastTranscript || '请念出咒语（如：除你武器、盔甲护身）'}
               </span>
             )}
           </div>
@@ -1666,24 +1713,24 @@ export default function GameCanvas({
 
         {/* Voldemort Priori Clash Reminder */}
         {hud.prioriActive && (
-          <div className="pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 rounded-lg border border-emerald-400/50 bg-[#052E16]/90 px-5 py-2 text-center">
-            <div className="text-sm font-bold text-emerald-200">
-              黑魔王索命咒触发！连续喊出【除你武器 / Expelliarmus】或连按快捷施法赢得对波！
+          <div className="pointer-events-none absolute left-1/2 top-14 w-11/12 max-w-md -translate-x-1/2 rounded-lg border border-emerald-400/50 bg-[#052E16]/90 px-4 py-2 text-center">
+            <div className="text-xs sm:text-sm font-bold text-emerald-200">
+              索命咒来袭！连续喊【除你武器】或点击 [1] 除你武器赢下对波！
             </div>
           </div>
         )}
 
         {/* Pause Overlay */}
         {isPaused && gameOverState === 'none' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0E17]/80 backdrop-blur-xs">
-            <h3 className="font-display text-3xl font-bold text-[#F1EDE4]">游戏暂停</h3>
-            <p className="mt-2 text-sm text-[#94A3B8]">
-              空格 / W / ↑ 跳跃（可二段跳） · S / ↓ 滑铲 · 语音念咒或按数字键 1–6 施法
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0B0E17]/85 p-4 backdrop-blur-xs">
+            <h3 className="font-display text-2xl sm:text-3xl font-bold text-[#F1EDE4]">游戏暂停</h3>
+            <p className="mt-2 text-center text-xs sm:text-sm text-[#94A3B8]">
+              空格 / 点击画面跳跃（二段跳） · S / ↓ 滑铲 · 语音念咒或按键 1–6 施法
             </p>
-            <div className="mt-6 flex gap-3">
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
               <button
                 onClick={() => setIsPaused(false)}
-                className="rounded-lg bg-[#E5B84B] px-6 py-2.5 text-sm font-semibold text-[#0B0E17] hover:bg-[#F3C963]"
+                className="rounded-lg bg-[#E5B84B] px-5 py-2.5 text-sm font-semibold text-[#0B0E17] hover:bg-[#F3C963]"
               >
                 继续冒险
               </button>
@@ -1705,39 +1752,41 @@ export default function GameCanvas({
 
         {/* Victory / Defeat Summary Modal */}
         {gameOverState !== 'none' && runSummary && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B0E17]/88 p-4 backdrop-blur-xs">
-            <div className="w-full max-w-lg rounded-xl border border-[#E5B84B]/35 bg-[#141928] p-6 space-y-5">
+          <div className="absolute inset-0 flex items-center justify-center bg-[#0B0E17]/90 p-3 backdrop-blur-xs">
+            <div className="w-full max-w-lg rounded-xl border border-[#E5B84B]/35 bg-[#141928] p-4 sm:p-6 space-y-4">
               <div className="text-center">
                 <div className="text-xs font-medium text-[#94A3B8]">{level.nameZh}</div>
                 <h3
-                  className={`mt-1 font-display text-3xl font-bold ${
+                  className={`mt-1 font-display text-2xl sm:text-3xl font-bold ${
                     runSummary.victory ? 'text-[#E5B84B]' : 'text-[#EF4444]'
                   }`}
                 >
-                  {runSummary.victory ? '胜利通关！击败黑魔法Boss' : '魔法力竭 · 闯关失败'}
+                  {runSummary.victory ? '胜利通关！' : '魔法力竭 · 闯关失败'}
                 </h3>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-center font-mono-num">
-                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-3">
+              <div className="grid grid-cols-3 gap-2.5 text-center font-mono-num">
+                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-2.5">
                   <div className="text-xs text-[#94A3B8]">本局得分</div>
-                  <div className="mt-1 text-lg font-bold text-[#F1EDE4]">{runSummary.score}</div>
+                  <div className="mt-1 text-base sm:text-lg font-bold text-[#F1EDE4]">
+                    {runSummary.score}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-3">
+                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-2.5">
                   <div className="text-xs text-[#94A3B8]">获得金加隆</div>
-                  <div className="mt-1 text-lg font-bold text-[#E5B84B]">
+                  <div className="mt-1 text-base sm:text-lg font-bold text-[#E5B84B]">
                     +{runSummary.galleonsEarned}
                   </div>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-3">
+                <div className="rounded-lg border border-white/10 bg-[#0F1320] p-2.5">
                   <div className="text-xs text-[#94A3B8]">击退食死徒</div>
-                  <div className="mt-1 text-lg font-bold text-[#38BDF8]">
+                  <div className="mt-1 text-base sm:text-lg font-bold text-[#38BDF8]">
                     {runSummary.deathEatersDefeated}
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 rounded-lg border border-white/10 bg-[#0F1320] p-3.5 text-xs text-[#CBD5E1]">
+              <div className="space-y-1.5 rounded-lg border border-white/10 bg-[#0F1320] p-3 text-xs sm:text-sm text-[#CBD5E1]">
                 <div className="flex justify-between">
                   <span>语音施法 / 总施法</span>
                   <span className="font-mono-num">
@@ -1752,13 +1801,13 @@ export default function GameCanvas({
                 </div>
                 {runSummary.newlyLearnedSpells.length > 0 && (
                   <div className="pt-1 text-emerald-300">
-                    本局领悟新咒语：
+                    领悟新咒语：
                     {runSummary.newlyLearnedSpells.map((id) => SPELL_MAP[id].nameZh).join('、')}
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2.5">
                 <button
                   onClick={resetRun}
                   className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#E5B84B] px-4 py-2.5 text-sm font-semibold text-[#0B0E17] hover:bg-[#F3C963]"
@@ -1770,7 +1819,7 @@ export default function GameCanvas({
                   onClick={onExit}
                   className="flex-1 whitespace-nowrap rounded-lg border border-white/15 bg-[#1C2338] px-4 py-2.5 text-sm font-semibold text-[#F1EDE4] hover:border-white/30"
                 >
-                  返回主页与咒语库
+                  返回主页
                 </button>
               </div>
             </div>
@@ -1778,13 +1827,13 @@ export default function GameCanvas({
         )}
       </div>
 
-      {/* Bottom Controls: Touch/Mouse Parkour Controls + 6-Slot Quick Cast + All Learned Voice Reference */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      {/* Bottom Controls: Large Touch Targets + Clear Readable Hotbar */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         {/* Parkour Action Buttons */}
         <div className="flex items-center gap-2.5 lg:col-span-3">
           <button
             onClick={triggerJump}
-            className="flex-1 whitespace-nowrap rounded-xl border border-white/15 bg-[#141928] py-3.5 text-sm font-semibold text-[#F1EDE4] active:scale-95 hover:border-[#E5B84B]"
+            className="min-h-[52px] flex-1 whitespace-nowrap rounded-xl border border-white/15 bg-[#141928] py-3.5 text-base font-bold text-[#F1EDE4] active:scale-95 hover:border-[#E5B84B]"
           >
             跳跃 (Space)
           </button>
@@ -1794,7 +1843,7 @@ export default function GameCanvas({
             onMouseLeave={() => setSlide(false)}
             onTouchStart={() => setSlide(true)}
             onTouchEnd={() => setSlide(false)}
-            className="flex-1 whitespace-nowrap rounded-xl border border-white/15 bg-[#141928] py-3.5 text-sm font-semibold text-[#CBD5E1] active:scale-95 hover:border-[#E5B84B]"
+            className="min-h-[52px] flex-1 whitespace-nowrap rounded-xl border border-white/15 bg-[#141928] py-3.5 text-base font-bold text-[#CBD5E1] active:scale-95 hover:border-[#E5B84B]"
           >
             滑铲 (S / ↓)
           </button>
@@ -1811,24 +1860,24 @@ export default function GameCanvas({
                 key={spellId}
                 disabled={!learned || cdMs > 0}
                 onClick={() => castSpell(spellId, false)}
-                className={`relative flex flex-col items-start justify-between overflow-hidden rounded-xl border p-2.5 text-left transition-all ${
+                className={`relative flex min-h-[70px] flex-col items-start justify-between overflow-hidden rounded-xl border p-2.5 text-left transition-all ${
                   learned
                     ? 'border-white/15 bg-[#141928] hover:border-[#E5B84B] active:scale-95'
                     : 'cursor-not-allowed border-white/5 bg-[#101420] opacity-50'
                 }`}
               >
                 <div className="flex w-full items-center justify-between text-xs">
-                  <span className="font-mono-num text-[#64748B]">[{idx + 1}]</span>
-                  <span className="font-mono-num text-[#38BDF8]">{spell.manaCost}</span>
+                  <span className="font-mono-num text-[#94A3B8]">[{idx + 1}]</span>
+                  <span className="font-mono-num font-semibold text-[#38BDF8]">{spell.manaCost}</span>
                 </div>
-                <div className="mt-1 truncate text-xs font-bold" style={{ color: spell.color }}>
+                <div className="mt-1 truncate w-full text-sm font-bold" style={{ color: spell.color }}>
                   {spell.nameZh}
                 </div>
-                <div className="truncate font-display text-[10px] text-[#94A3B8]">
+                <div className="truncate w-full font-display text-xs text-[#94A3B8]">
                   {spell.incantation}
                 </div>
                 {cdMs > 0 && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[#0B0E17]/75 font-mono-num text-xs font-bold text-[#F1EDE4]">
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#0B0E17]/75 font-mono-num text-sm font-bold text-[#F1EDE4]">
                     {(cdMs / 1000).toFixed(1)}s
                   </div>
                 )}
@@ -1840,9 +1889,9 @@ export default function GameCanvas({
 
       {/* All Learned Spells Quick Voice Prompt Strip */}
       <div className="rounded-xl border border-white/10 bg-[#141928] px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 text-sm">
           <span className="font-semibold text-[#E5B84B]">
-            已掌握咒语语音全支持（直接说出即可释放，也可点击施法）：
+            已掌握咒语（语音或点击释放）：
           </span>
           {hud.learnedSpells.map((sid) => {
             const sp = SPELL_MAP[sid];
@@ -1850,7 +1899,7 @@ export default function GameCanvas({
               <button
                 key={sid}
                 onClick={() => castSpell(sid, false)}
-                className="whitespace-nowrap text-[#CBD5E1] underline-offset-4 hover:text-white hover:underline"
+                className="whitespace-nowrap text-[#F1EDE4] underline-offset-4 hover:underline"
               >
                 <span style={{ color: sp.color }}>●</span> {sp.nameZh}
               </button>
