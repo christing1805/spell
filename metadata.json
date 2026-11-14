@@ -1,0 +1,10 @@
+{
+  "name": "Hogwarts Dash: 声控魔法跑酷",
+  "description": "哈利波特主题平面像素跑酷游戏：全面咒语库研习、跑酷拾取咒语学习单、实时语音释放咒语对抗食死徒与关卡Boss、丰富成就与巫师服装收集。",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
